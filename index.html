@@ -7,37 +7,62 @@
 <meta name="referrer" content="no-referrer">
 <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src data:; connect-src 'none'; form-action 'none'; base-uri 'none'">
 <meta name="apple-mobile-web-app-capable" content="yes">
-<meta name="theme-color" content="#0b1220">
+<meta name="theme-color" content="#070b08">
 <title>Retirement Check</title>
 <style>
+:root{--bg:#070b08;--panel:#0d1510;--line:rgba(120,255,160,.28);--ink:#d7e6d9;--dim:#7f9a86;--grn:#39ff88;--amb:#ffb020;--red:#ff4d3d;--done:#1f8f5a}
 *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
-body{margin:0;background:#0b1220;color:#e8edf5;font:15px/1.4 -apple-system,system-ui,sans-serif;padding:env(safe-area-inset-top) 0 env(safe-area-inset-bottom)}
-#app{max-width:430px;margin:0 auto;padding:16px}
-h1{font-size:20px;margin:4px 0 14px}
-.card{background:#111a2e;border:1px solid rgba(255,255,255,.22);border-radius:14px;padding:14px;margin-bottom:12px}
-.lbl{font-size:12px;color:#9fb0cc;text-transform:uppercase;letter-spacing:.04em}
-.big{font-size:30px;font-weight:700;margin:2px 0}
-.row{display:flex;justify-content:space-between;gap:10px;padding:7px 0;border-top:1px solid rgba(255,255,255,.08)}
+body{margin:0;background:var(--bg);color:var(--ink);font:14px/1.4 ui-monospace,SFMono-Regular,Menlo,monospace;padding:env(safe-area-inset-top) 0 env(safe-area-inset-bottom);min-height:100vh;background-image:linear-gradient(rgba(57,255,136,.04) 1px,transparent 1px),linear-gradient(90deg,rgba(57,255,136,.04) 1px,transparent 1px);background-size:24px 24px}
+body::after{content:"";position:fixed;inset:0;pointer-events:none;background:repeating-linear-gradient(0deg,rgba(0,0,0,.18) 0 1px,transparent 1px 3px);z-index:9}
+body::before{content:"";position:fixed;left:0;right:0;height:120px;top:-120px;pointer-events:none;background:linear-gradient(transparent,rgba(57,255,136,.07),transparent);animation:sweep 7s linear infinite;z-index:8}
+@keyframes sweep{to{transform:translateY(calc(100vh + 240px))}}
+@keyframes pulse{50%{opacity:.25}}
+@keyframes rise{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
+@keyframes spin{to{transform:rotate(360deg)}}
+@keyframes stripes{to{background-position:28px 0}}
+@keyframes shake{20%,60%{transform:translateX(-6px)}40%,80%{transform:translateX(6px)}}
+#app{max-width:430px;margin:0 auto;padding:0 16px 24px}
+.banner{margin:0 -16px 14px;background:#143a1f;color:var(--grn);text-align:center;font-size:11px;letter-spacing:.28em;padding:5px 0;border-bottom:1px solid var(--line);font-weight:700}
+.banner.red{background:#3a1410;color:var(--red)}
+.hdr{display:flex;justify-content:space-between;align-items:center;margin-bottom:12px}
+h1{font-size:16px;margin:0;letter-spacing:.2em;text-transform:uppercase;color:var(--grn)}
+.stat{font-size:11px;color:var(--grn);letter-spacing:.15em}
+.stat i{display:inline-block;width:8px;height:8px;border-radius:50%;background:var(--grn);margin-right:6px;box-shadow:0 0 8px var(--grn);animation:pulse 2s infinite}
+.card{position:relative;background:var(--panel);border:1px solid var(--line);border-radius:2px;padding:14px;margin-bottom:12px;animation:rise .35s ease both}
+.card::before,.card::after{content:"";position:absolute;width:12px;height:12px;border:2px solid var(--grn)}
+.card::before{top:-2px;left:-2px;border-right:0;border-bottom:0}
+.card::after{bottom:-2px;right:-2px;border-left:0;border-top:0}
+.lbl{font-size:11px;color:var(--dim);text-transform:uppercase;letter-spacing:.16em}
+.big{font-size:30px;font-weight:700;margin:4px 0;color:var(--grn);text-shadow:0 0 12px rgba(57,255,136,.45)}
+.row{display:flex;justify-content:space-between;gap:10px;padding:7px 0;border-top:1px dashed rgba(120,255,160,.18)}
 .row:first-of-type{border-top:0}
-.row span:first-child{color:#9fb0cc}
-input{width:100%;background:#0b1220;color:#fff;border:1px solid rgba(255,255,255,.35);border-radius:10px;padding:11px;font-size:16px;margin:4px 0 10px}
-button{background:#1d4ed8;color:#fff;border:0;border-radius:999px;padding:11px 18px;font-size:15px;font-weight:600;cursor:pointer}
-button.alt{background:transparent;border:1px solid rgba(255,255,255,.4)}
-button.danger{background:#b42318}
+.row span:first-child{color:var(--dim)}
+input{width:100%;background:#050806;color:var(--grn);border:1px solid var(--line);border-radius:0;padding:11px;font:16px ui-monospace,Menlo,monospace;margin:4px 0 10px;caret-color:var(--grn)}
+input:focus{outline:0;border-color:var(--grn);box-shadow:0 0 0 1px var(--grn),0 0 12px rgba(57,255,136,.3)}
+button{background:transparent;color:var(--grn);border:1px solid var(--grn);border-radius:0;padding:11px 16px;font:700 13px ui-monospace,Menlo,monospace;letter-spacing:.14em;text-transform:uppercase;cursor:pointer;transition:background .15s,box-shadow .15s}
+button:hover,button:active{background:rgba(57,255,136,.16);box-shadow:0 0 12px rgba(57,255,136,.35)}
+button.alt{color:var(--dim);border-color:var(--line)}
+button.danger{color:var(--red);border-color:var(--red)}
 button.full{width:100%;margin-top:6px}
-.bar{height:10px;border-radius:6px;background:#1f2b45;overflow:hidden;margin:8px 0}
-.bar i{display:block;height:100%;background:#1f8f5a}
-.tabs{display:flex;gap:8px;margin-bottom:12px}
-.tabs button{flex:1;padding:9px 4px;font-size:14px}
-.tabs button.on{background:#1d4ed8;border-color:#1d4ed8}
-.tabs button:not(.on){background:transparent;border:1px solid rgba(255,255,255,.35)}
-.err{color:#ff8a80;min-height:20px;font-size:13px}
-.hint{color:#9fb0cc;font-size:12px;margin:-4px 0 10px}
+.bar{height:12px;border:1px solid var(--line);background:#050806;margin:8px 0;overflow:hidden}
+.bar i{display:block;height:100%;background:repeating-linear-gradient(115deg,var(--done) 0 10px,#27b574 10px 20px);background-size:28px 100%;animation:stripes 1.2s linear infinite;transition:width .9s ease}
+.tabs{display:flex;gap:6px;margin-bottom:12px}
+.tabs button{flex:1;padding:9px 2px;font-size:12px}
+.tabs button.on{background:var(--grn);color:#04100a;box-shadow:0 0 14px rgba(57,255,136,.45)}
+.err{color:var(--red);min-height:20px;font-size:12px;letter-spacing:.06em}
+.hint{color:var(--dim);font-size:11px;margin:-4px 0 10px}
 svg{width:100%;height:auto;display:block}
-.ent{display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-top:1px solid rgba(255,255,255,.08)}
-.ent button{padding:4px 10px;font-size:12px}
-.leg{display:flex;gap:12px;flex-wrap:wrap;font-size:12px;color:#9fb0cc;margin-top:6px}
-.leg b{display:inline-block;width:10px;height:10px;border-radius:2px;margin-right:4px}
+.ent{display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-top:1px dashed rgba(120,255,160,.18)}
+.ent button{padding:4px 8px;font-size:10px}
+.leg{display:flex;gap:12px;flex-wrap:wrap;font-size:11px;color:var(--dim);margin-top:6px}
+.leg b{display:inline-block;width:10px;height:10px;margin-right:4px}
+.radar{width:120px;height:120px;margin:6px auto 14px;border-radius:50%;border:1px solid var(--grn);position:relative;background:radial-gradient(circle,transparent 0 28%,rgba(57,255,136,.25) 28.5% 29.5%,transparent 30% 58%,rgba(57,255,136,.25) 58.5% 59.5%,transparent 60%),linear-gradient(var(--line),var(--line)) center/1px 100% no-repeat,linear-gradient(var(--line),var(--line)) center/100% 1px no-repeat;box-shadow:0 0 18px rgba(57,255,136,.25)}
+.radar::before{content:"";position:absolute;inset:0;border-radius:50%;background:conic-gradient(from 0deg,rgba(57,255,136,.55),transparent 28%);animation:spin 3s linear infinite}
+.radar.fast::before{animation-duration:.5s}
+.shake{animation:shake .4s}
+.seq{font-size:12px;color:var(--grn);min-height:64px;white-space:pre-line}
+.seq::after{content:"_";animation:pulse 1s infinite}
+@media (prefers-reduced-motion:reduce){*,*::before,*::after{animation:none!important;transition:none!important}}
 </style>
 </head>
 <body>
@@ -180,16 +205,16 @@ function chart(a) {
   const line = (pts, f) => pts.map((p, i) => (i ? 'L' : 'M') + x(p.t).toFixed(1) + ' ' + y(f(p)).toFixed(1)).join('');
   const ticks = [0, .25, .5, .75, 1].map(f => {
     const t = Math.round(tMin + f * (tMax - tMin));
-    return `<text x="${x(t).toFixed(1)}" y="${H - 6}" fill="#9fb0cc" font-size="10" text-anchor="middle">${addMonths(startYM, t).slice(0, 4)}</text>`;
+    return `<text x="${x(t).toFixed(1)}" y="${H - 6}" fill="#7f9a86" font-size="10" text-anchor="middle">${addMonths(startYM, t).slice(0, 4)}</text>`;
   }).join('');
-  const dot = a.p.months !== null ? `<circle cx="${x(a.p.months).toFixed(1)}" cy="${y(ser[ser.length > a.p.months ? a.p.months : ser.length - 1].bal).toFixed(1)}" r="5" fill="#1f8f5a" stroke="#fff"/>` : '';
+  const dot = a.p.months !== null ? `<circle cx="${x(a.p.months).toFixed(1)}" cy="${y(ser[ser.length > a.p.months ? a.p.months : ser.length - 1].bal).toFixed(1)}" r="5" fill="#1f8f5a" stroke="#070b08"/>` : '';
   return `<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="Balance versus required principal">
-<path d="${line(ser, p => p.req)}" fill="none" stroke="#f59e0b" stroke-width="2"/>
-<path d="${line(ser, p => p.bal)}" fill="none" stroke="#60a5fa" stroke-width="2" stroke-dasharray="5 4"/>
+<path d="${line(ser, p => p.req)}" fill="none" stroke="#ffb020" stroke-width="2"/>
+<path d="${line(ser, p => p.bal)}" fill="none" stroke="#39ff88" stroke-width="2" stroke-dasharray="5 4"/>
 ${hist.length > 1 ? `<path d="${line(hist, p => p.v)}" fill="none" stroke="#fff" stroke-width="2.5"/>` : ''}
 ${hist.map(h => `<circle cx="${x(h.t).toFixed(1)}" cy="${y(h.v).toFixed(1)}" r="3" fill="#fff"/>`).join('')}
 ${dot}${ticks}</svg>
-<div class="leg"><span><b style="background:#fff"></b>Actual</span><span><b style="background:#60a5fa"></b>Projected</span><span><b style="background:#f59e0b"></b>Required principal</span></div>`;
+<div class="leg"><span><b style="background:#fff"></b>Actual</span><span><b style="background:#39ff88"></b>Projected</span><span><b style="background:#ffb020"></b>Required principal</span></div>`;
 }
 
 const $app = document.getElementById('app');
@@ -197,8 +222,11 @@ const esc = s => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;',
 
 function viewLogin(err) {
   const exists = !!vault;
-  $app.innerHTML = `<h1>Retirement Check</h1><div class="card">
-<div class="lbl">${exists ? 'Unlock' : 'Create passphrase'}</div>
+  $app.innerHTML = `<div class="banner ${err && /denied|wrong|valid|match|least|not/i.test(err) ? 'red' : ''}">${err && /denied|wrong/i.test(err) ? 'ACCESS DENIED' : 'RESTRICTED // AUTHORIZED PERSONNEL ONLY'}</div>
+<div class="hdr"><h1>Retirement Check</h1><span class="stat"><i></i>LOCKED</span></div>
+<div class="card" id="gate"><div class="radar" id="radar"></div>
+<div class="seq" id="seq" hidden></div>
+<div class="lbl">${exists ? 'Credential required' : 'Establish passphrase'}</div>
 <input id="pw" type="password" autocomplete="${exists ? 'current-password' : 'new-password'}" placeholder="${exists ? 'Passphrase' : 'At least 12 characters'}">
 ${exists ? '' : '<input id="pw2" type="password" autocomplete="new-password" placeholder="Repeat passphrase"><div class="hint">Your data is encrypted on this device with this passphrase. It cannot be recovered if lost. Keep an encrypted export as backup.</div>'}
 <div class="err" id="err">${esc(err || '')}</div>
@@ -207,21 +235,25 @@ ${exists && vault.slots.pk ? '<button class="full alt" id="fid">Unlock with Face
 ${exists ? '<button class="full alt" id="imp">Import encrypted backup</button><input id="file" type="file" accept=".json" style="display:none">' : ''}
 </div>`;
   const pw = document.getElementById('pw');
-  const fail = m => { document.getElementById('err').textContent = m; };
+  const fail = m => {
+    document.getElementById('err').textContent = m;
+    const g = document.getElementById('gate'); g.classList.remove('shake'); void g.offsetWidth; g.classList.add('shake');
+    const b = document.querySelector('.banner'); b.classList.add('red'); b.textContent = 'ACCESS DENIED';
+  };
   document.getElementById('go').onclick = async () => {
+    if (!exists) {
+      if (pw.value.length < 12) return fail('Use at least 12 characters.');
+      if (pw.value !== document.getElementById('pw2').value) return fail('Passphrases do not match.');
+    }
+    const run = sequence(exists ? ['> VERIFYING CREDENTIAL', '> DERIVING KEY', '> DECRYPTING VAULT'] : ['> GENERATING KEYS', '> SEALING VAULT']);
     try {
-      if (exists) { await unlockPass(pw.value); }
-      else {
-        if (pw.value.length < 12) return fail('Use at least 12 characters.');
-        if (pw.value !== document.getElementById('pw2').value) return fail('Passphrases do not match.');
-        await createVault(pw.value);
-      }
-      pw.value = ''; tab = 'home'; render();
-    } catch (e) { fail('Wrong passphrase.'); }
+      if (exists) await unlockPass(pw.value); else await createVault(pw.value);
+      await run; pw.value = ''; tab = 'home'; render();
+    } catch (e) { await run; document.getElementById('seq').hidden = true; document.getElementById('radar').classList.remove('fast'); fail('Access denied. Wrong passphrase.'); }
   };
   const fid = document.getElementById('fid');
   if (fid) fid.onclick = async () => {
-    try { await unlockFaceId(); tab = 'home'; render(); } catch (e) { fail(e.message || 'Face ID failed.'); }
+    try { await unlockFaceId(); await sequence(['> BIOMETRIC MATCH', '> DECRYPTING VAULT']); tab = 'home'; render(); } catch (e) { fail(e.message || 'Face ID failed.'); }
   };
   const imp = document.getElementById('imp');
   if (imp) { const f = document.getElementById('file'); imp.onclick = () => f.click(); f.onchange = importFile; }
@@ -234,6 +266,12 @@ async function importFile(ev) {
     if (v.v !== 1 || !v.slots || !v.slots.pass || !v.data) throw 0;
     vault = v; localStorage.setItem(KEY, JSON.stringify(v)); lock('Backup imported. Unlock with its passphrase.');
   } catch (e) { viewLogin('Not a valid backup file.'); }
+}
+
+async function sequence(lines) {
+  const el = document.getElementById('seq'), r = document.getElementById('radar');
+  el.hidden = false; r.classList.add('fast'); el.textContent = '';
+  for (const l of lines) { el.textContent += (el.textContent ? '\n' : '') + l; await new Promise(ok => setTimeout(ok, 450)); }
 }
 
 function lock(msg) {
@@ -275,7 +313,7 @@ function viewLog() {
 <input id="sav" inputmode="decimal" placeholder="Savings total ($)">
 <div class="err" id="err"></div>
 <button class="full" id="save">Save month</button></div>
-<div class="card"><div class="lbl">History</div>${es.length ? es.map(e => `<div class="ent"><span>${fmtYM(e.month)}<br><small style="color:#9fb0cc">${usd(e.investments)} + ${usd(e.savings)}</small></span><span><b>${usd(total(e))}</b> <button class="alt danger" data-del="${e.month}">Delete</button></span></div>`).join('') : '<p class="hint">No months logged yet.</p>'}</div>`;
+<div class="card"><div class="lbl">History</div>${es.length ? es.map(e => `<div class="ent"><span>${fmtYM(e.month)}<br><small style="color:#7f9a86">${usd(e.investments)} + ${usd(e.savings)}</small></span><span><b>${usd(total(e))}</b> <button class="alt danger" data-del="${e.month}">Delete</button></span></div>`).join('') : '<p class="hint">No months logged yet.</p>'}</div>`;
 }
 
 function viewSet() {
@@ -298,7 +336,7 @@ ${vault.slots.pk ? '<p class="hint">Face ID unlock is enabled.</p>' : '<input id
 
 function render() {
   if (!data) return viewLogin();
-  $app.innerHTML = `<h1>Retirement Check</h1>${tabs()}${tab === 'home' ? viewHome() : tab === 'log' ? viewLog() : viewSet()}`;
+  $app.innerHTML = `<div class="banner">SECURE // ENCRYPTED SESSION</div><div class="hdr"><h1>Retirement Check</h1><span class="stat"><i></i>SECURE</span></div>${tabs()}${tab === 'home' ? viewHome() : tab === 'log' ? viewLog() : viewSet()}`;
   $app.querySelectorAll('[data-t]').forEach(b => b.onclick = () => { tab = b.dataset.t; render(); });
   const $ = id => document.getElementById(id);
   const num = id => parseFloat(String($(id).value).replace(/[$,\s]/g, ''));
