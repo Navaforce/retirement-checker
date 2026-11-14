@@ -1,0 +1,345 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="robots" content="noindex,nofollow">
+<meta name="referrer" content="no-referrer">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src data:; connect-src 'none'; form-action 'none'; base-uri 'none'">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="theme-color" content="#0b1220">
+<title>Retirement Check</title>
+<style>
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+body{margin:0;background:#0b1220;color:#e8edf5;font:15px/1.4 -apple-system,system-ui,sans-serif;padding:env(safe-area-inset-top) 0 env(safe-area-inset-bottom)}
+#app{max-width:430px;margin:0 auto;padding:16px}
+h1{font-size:20px;margin:4px 0 14px}
+.card{background:#111a2e;border:1px solid rgba(255,255,255,.22);border-radius:14px;padding:14px;margin-bottom:12px}
+.lbl{font-size:12px;color:#9fb0cc;text-transform:uppercase;letter-spacing:.04em}
+.big{font-size:30px;font-weight:700;margin:2px 0}
+.row{display:flex;justify-content:space-between;gap:10px;padding:7px 0;border-top:1px solid rgba(255,255,255,.08)}
+.row:first-of-type{border-top:0}
+.row span:first-child{color:#9fb0cc}
+input{width:100%;background:#0b1220;color:#fff;border:1px solid rgba(255,255,255,.35);border-radius:10px;padding:11px;font-size:16px;margin:4px 0 10px}
+button{background:#1d4ed8;color:#fff;border:0;border-radius:999px;padding:11px 18px;font-size:15px;font-weight:600;cursor:pointer}
+button.alt{background:transparent;border:1px solid rgba(255,255,255,.4)}
+button.danger{background:#b42318}
+button.full{width:100%;margin-top:6px}
+.bar{height:10px;border-radius:6px;background:#1f2b45;overflow:hidden;margin:8px 0}
+.bar i{display:block;height:100%;background:#1f8f5a}
+.tabs{display:flex;gap:8px;margin-bottom:12px}
+.tabs button{flex:1;padding:9px 4px;font-size:14px}
+.tabs button.on{background:#1d4ed8;border-color:#1d4ed8}
+.tabs button:not(.on){background:transparent;border:1px solid rgba(255,255,255,.35)}
+.err{color:#ff8a80;min-height:20px;font-size:13px}
+.hint{color:#9fb0cc;font-size:12px;margin:-4px 0 10px}
+svg{width:100%;height:auto;display:block}
+.ent{display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-top:1px solid rgba(255,255,255,.08)}
+.ent button{padding:4px 10px;font-size:12px}
+.leg{display:flex;gap:12px;flex-wrap:wrap;font-size:12px;color:#9fb0cc;margin-top:6px}
+.leg b{display:inline-block;width:10px;height:10px;border-radius:2px;margin-right:4px}
+</style>
+</head>
+<body>
+<div id="app"></div>
+<script>
+'use strict';
+const KEY = 'rc_vault_v1';
+const enc = new TextEncoder(), dec = new TextDecoder();
+const b64 = u => btoa(String.fromCharCode(...new Uint8Array(u)));
+const unb64 = s => Uint8Array.from(atob(s), c => c.charCodeAt(0));
+const rnd = n => crypto.getRandomValues(new Uint8Array(n));
+const ITER = 600000;
+
+const DEFAULTS = { target: 85000, yield: 0.04, growth: 0.06, inflation: 0.03, contribution: 0 };
+
+let dek = null, vault = null, data = null, tab = 'home';
+
+async function kekFromPass(pass, salt, iter) {
+  const base = await crypto.subtle.importKey('raw', enc.encode(pass), 'PBKDF2', false, ['deriveKey']);
+  return crypto.subtle.deriveKey({ name: 'PBKDF2', salt, iterations: iter, hash: 'SHA-256' }, base, { name: 'AES-GCM', length: 256 }, false, ['encrypt', 'decrypt']);
+}
+async function aesEnc(key, bytes) {
+  const iv = rnd(12);
+  const ct = await crypto.subtle.encrypt({ name: 'AES-GCM', iv }, key, bytes);
+  return { iv: b64(iv), ct: b64(ct) };
+}
+async function aesDec(key, o) {
+  return new Uint8Array(await crypto.subtle.decrypt({ name: 'AES-GCM', iv: unb64(o.iv) }, key, unb64(o.ct)));
+}
+async function dekKey(raw) {
+  return crypto.subtle.importKey('raw', raw, 'AES-GCM', false, ['encrypt', 'decrypt']);
+}
+
+async function persist() {
+  vault.data = await aesEnc(dek, enc.encode(JSON.stringify(data)));
+  localStorage.setItem(KEY, JSON.stringify(vault));
+}
+
+async function createVault(pass) {
+  const raw = rnd(32);
+  dek = await dekKey(raw);
+  const salt = rnd(16);
+  const kek = await kekFromPass(pass, salt, ITER);
+  data = { settings: { ...DEFAULTS }, entries: [] };
+  vault = { v: 1, kdf: { salt: b64(salt), iter: ITER }, slots: { pass: await aesEnc(kek, raw) }, data: null };
+  await persist();
+}
+
+async function unlockPass(pass) {
+  const kek = await kekFromPass(pass, unb64(vault.kdf.salt), vault.kdf.iter);
+  const raw = await aesDec(kek, vault.slots.pass);
+  dek = await dekKey(raw);
+  data = JSON.parse(dec.decode(await aesDec(dek, vault.data)));
+}
+
+async function prfKey(credId, salt) {
+  const cred = await navigator.credentials.get({ publicKey: {
+    challenge: rnd(32), allowCredentials: [{ type: 'public-key', id: unb64(credId) }],
+    userVerification: 'required', extensions: { prf: { eval: { first: salt } } }
+  } });
+  const out = cred.getClientExtensionResults().prf;
+  if (!out || !out.results || !out.results.first) throw new Error('Face ID key derivation not supported on this device');
+  return dekKey(out.results.first);
+}
+
+async function unlockFaceId() {
+  const s = vault.slots.pk;
+  const kek = await prfKey(s.credId, unb64(s.salt));
+  const raw = await aesDec(kek, s);
+  dek = await dekKey(raw);
+  data = JSON.parse(dec.decode(await aesDec(dek, vault.data)));
+}
+
+async function enableFaceId(pass) {
+  const kekP = await kekFromPass(pass, unb64(vault.kdf.salt), vault.kdf.iter);
+  const raw = await aesDec(kekP, vault.slots.pass);
+  const cred = await navigator.credentials.create({ publicKey: {
+    rp: { name: 'Retirement Check' }, user: { id: rnd(16), name: 'owner', displayName: 'Owner' },
+    challenge: rnd(32), pubKeyCredParams: [{ type: 'public-key', alg: -7 }, { type: 'public-key', alg: -257 }],
+    authenticatorSelection: { authenticatorAttachment: 'platform', userVerification: 'required', residentKey: 'preferred' },
+    extensions: { prf: {} }
+  } });
+  if (!cred.getClientExtensionResults().prf || !cred.getClientExtensionResults().prf.enabled) throw new Error('This device or browser does not support Face ID unlock for web pages (needs iOS 18+).');
+  const salt = rnd(32), credId = b64(cred.rawId);
+  const kek = await prfKey(credId, salt);
+  vault.slots.pk = { credId, salt: b64(salt), ...(await aesEnc(kek, raw)) };
+  await persist();
+}
+
+function project(bal, c, g, infl, y, target, maxMonths = 720) {
+  const r = g / 12, series = [];
+  let b = bal;
+  for (let t = 0; t <= maxMonths; t++) {
+    const req = target * Math.pow(1 + infl, t / 12) / y;
+    series.push({ t, bal: b, req });
+    if (b >= req) return { months: t, series };
+    b = b * (1 + r) + c;
+  }
+  return { months: null, series };
+}
+
+function addMonths(ym, n) {
+  const [y, m] = ym.split('-').map(Number);
+  const d = new Date(y, m - 1 + n, 1);
+  return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0');
+}
+const MN = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+const fmtYM = ym => MN[+ym.slice(5) - 1] + ' ' + ym.slice(0, 4);
+const usd = n => (n < 0 ? '-$' : '$') + Math.abs(Math.round(n)).toLocaleString('en-US');
+const pct = n => (n * 100).toFixed(1).replace(/\.0$/, '') + '%';
+const sorted = () => [...data.entries].sort((a, b) => a.month.localeCompare(b.month));
+const total = e => e.investments + e.savings;
+
+function analysis() {
+  const s = data.settings, es = sorted();
+  if (!es.length) return null;
+  const last = es[es.length - 1], bal = total(last);
+  const reqToday = s.target / s.yield;
+  const p = project(bal, s.contribution, s.growth, s.inflation, s.yield, s.target);
+  let pace = null;
+  const recent = es.slice(-7);
+  if (recent.length >= 2) {
+    const a = recent[0], z = recent[recent.length - 1];
+    const gap = (+z.month.slice(0, 4) - +a.month.slice(0, 4)) * 12 + (+z.month.slice(5) - +a.month.slice(5));
+    if (gap > 0) pace = (total(z) - total(a)) / gap;
+  }
+  return { s, es, last, bal, reqToday, p, pace };
+}
+
+function chart(a) {
+  const W = 400, H = 200, pl = 8, pr = 8, pt = 10, pb = 22;
+  const startYM = a.last.month;
+  const horizon = a.p.months === null ? 360 : Math.max(a.p.months + 12, 24);
+  const ser = a.p.series.slice(0, horizon + 1);
+  const hist = a.es.map(e => ({ t: (+e.month.slice(0, 4) - +startYM.slice(0, 4)) * 12 + (+e.month.slice(5) - +startYM.slice(5)), v: total(e) }));
+  const tMin = Math.min(0, ...hist.map(h => h.t)), tMax = horizon;
+  const vMax = Math.max(...ser.map(p => Math.max(p.bal, p.req)), ...hist.map(h => h.v)) * 1.05;
+  const x = t => pl + (t - tMin) / (tMax - tMin) * (W - pl - pr);
+  const y = v => pt + (1 - v / vMax) * (H - pt - pb);
+  const line = (pts, f) => pts.map((p, i) => (i ? 'L' : 'M') + x(p.t).toFixed(1) + ' ' + y(f(p)).toFixed(1)).join('');
+  const ticks = [0, .25, .5, .75, 1].map(f => {
+    const t = Math.round(tMin + f * (tMax - tMin));
+    return `<text x="${x(t).toFixed(1)}" y="${H - 6}" fill="#9fb0cc" font-size="10" text-anchor="middle">${addMonths(startYM, t).slice(0, 4)}</text>`;
+  }).join('');
+  const dot = a.p.months !== null ? `<circle cx="${x(a.p.months).toFixed(1)}" cy="${y(ser[ser.length > a.p.months ? a.p.months : ser.length - 1].bal).toFixed(1)}" r="5" fill="#1f8f5a" stroke="#fff"/>` : '';
+  return `<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="Balance versus required principal">
+<path d="${line(ser, p => p.req)}" fill="none" stroke="#f59e0b" stroke-width="2"/>
+<path d="${line(ser, p => p.bal)}" fill="none" stroke="#60a5fa" stroke-width="2" stroke-dasharray="5 4"/>
+${hist.length > 1 ? `<path d="${line(hist, p => p.v)}" fill="none" stroke="#fff" stroke-width="2.5"/>` : ''}
+${hist.map(h => `<circle cx="${x(h.t).toFixed(1)}" cy="${y(h.v).toFixed(1)}" r="3" fill="#fff"/>`).join('')}
+${dot}${ticks}</svg>
+<div class="leg"><span><b style="background:#fff"></b>Actual</span><span><b style="background:#60a5fa"></b>Projected</span><span><b style="background:#f59e0b"></b>Required principal</span></div>`;
+}
+
+const $app = document.getElementById('app');
+const esc = s => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+
+function viewLogin(err) {
+  const exists = !!vault;
+  $app.innerHTML = `<h1>Retirement Check</h1><div class="card">
+<div class="lbl">${exists ? 'Unlock' : 'Create passphrase'}</div>
+<input id="pw" type="password" autocomplete="${exists ? 'current-password' : 'new-password'}" placeholder="${exists ? 'Passphrase' : 'At least 12 characters'}">
+${exists ? '' : '<input id="pw2" type="password" autocomplete="new-password" placeholder="Repeat passphrase"><div class="hint">Your data is encrypted on this device with this passphrase. It cannot be recovered if lost. Keep an encrypted export as backup.</div>'}
+<div class="err" id="err">${esc(err || '')}</div>
+<button class="full" id="go">${exists ? 'Unlock' : 'Create'}</button>
+${exists && vault.slots.pk ? '<button class="full alt" id="fid">Unlock with Face ID</button>' : ''}
+${exists ? '<button class="full alt" id="imp">Import encrypted backup</button><input id="file" type="file" accept=".json" style="display:none">' : ''}
+</div>`;
+  const pw = document.getElementById('pw');
+  const fail = m => { document.getElementById('err').textContent = m; };
+  document.getElementById('go').onclick = async () => {
+    try {
+      if (exists) { await unlockPass(pw.value); }
+      else {
+        if (pw.value.length < 12) return fail('Use at least 12 characters.');
+        if (pw.value !== document.getElementById('pw2').value) return fail('Passphrases do not match.');
+        await createVault(pw.value);
+      }
+      pw.value = ''; tab = 'home'; render();
+    } catch (e) { fail('Wrong passphrase.'); }
+  };
+  const fid = document.getElementById('fid');
+  if (fid) fid.onclick = async () => {
+    try { await unlockFaceId(); tab = 'home'; render(); } catch (e) { fail(e.message || 'Face ID failed.'); }
+  };
+  const imp = document.getElementById('imp');
+  if (imp) { const f = document.getElementById('file'); imp.onclick = () => f.click(); f.onchange = importFile; }
+}
+
+async function importFile(ev) {
+  const f = ev.target.files[0]; if (!f) return;
+  try {
+    const v = JSON.parse(await f.text());
+    if (v.v !== 1 || !v.slots || !v.slots.pass || !v.data) throw 0;
+    vault = v; localStorage.setItem(KEY, JSON.stringify(v)); lock('Backup imported. Unlock with its passphrase.');
+  } catch (e) { viewLogin('Not a valid backup file.'); }
+}
+
+function lock(msg) {
+  dek = null; data = null;
+  vault = JSON.parse(localStorage.getItem(KEY) || 'null');
+  viewLogin(msg);
+}
+
+function tabs() {
+  return `<div class="tabs">${[['home', 'Status'], ['log', 'Monthly'], ['set', 'Settings']].map(([k, l]) => `<button data-t="${k}" class="${tab === k ? 'on' : ''}">${l}</button>`).join('')}</div>`;
+}
+
+function viewHome() {
+  const a = analysis();
+  if (!a) return `<div class="card"><div class="lbl">Get started</div><p>Log your first month to see your timeline.</p><button class="full" data-t="log">Log this month</button></div>`;
+  const { s, p, bal, reqToday } = a;
+  const prog = Math.min(1, bal / reqToday);
+  const when = p.months === null ? 'Not within 60 years' : p.months === 0 ? 'Reached' : fmtYM(addMonths(a.last.month, p.months));
+  const yrs = p.months === null ? '' : p.months === 0 ? 'Interest covers your target now' : `${Math.floor(p.months / 12)} yr ${p.months % 12} mo from ${fmtYM(a.last.month)}`;
+  const atRet = p.months === null ? null : p.series[p.months];
+  return `<div class="card"><div class="lbl">Interest-only retirement</div><div class="big">${when}</div><div class="hint" style="margin:0">${yrs}</div>
+<div class="bar"><i style="width:${(prog * 100).toFixed(1)}%"></i></div>
+<div class="row"><span>Progress</span><b>${pct(prog)}</b></div>
+<div class="row"><span>Current total</span><b>${usd(bal)}</b></div>
+<div class="row"><span>Principal needed today</span><b>${usd(reqToday)}</b></div>
+<div class="row"><span>Gap today</span><b>${usd(Math.max(0, reqToday - bal))}</b></div>
+<div class="row"><span>Income your balance yields now</span><b>${usd(bal * s.yield)}/yr</b></div>
+${atRet ? `<div class="row"><span>Target then (inflation-adjusted)</span><b>${usd(atRet.req * s.yield)}/yr</b></div><div class="row"><span>Principal needed then</span><b>${usd(atRet.req)}</b></div>` : ''}
+${a.pace !== null ? `<div class="row"><span>Your recent pace</span><b>${usd(a.pace)}/mo</b></div>` : ''}
+</div><div class="card"><div class="lbl">Trend and projection</div>${chart(a)}</div>`;
+}
+
+function viewLog() {
+  const now = new Date(), ym = now.getFullYear() + '-' + String(now.getMonth() + 1).padStart(2, '0');
+  const es = sorted().reverse();
+  return `<div class="card"><div class="lbl">Log a month</div>
+<input id="m" type="month" value="${ym}">
+<input id="inv" inputmode="decimal" placeholder="Investments total ($)">
+<input id="sav" inputmode="decimal" placeholder="Savings total ($)">
+<div class="err" id="err"></div>
+<button class="full" id="save">Save month</button></div>
+<div class="card"><div class="lbl">History</div>${es.length ? es.map(e => `<div class="ent"><span>${fmtYM(e.month)}<br><small style="color:#9fb0cc">${usd(e.investments)} + ${usd(e.savings)}</small></span><span><b>${usd(total(e))}</b> <button class="alt danger" data-del="${e.month}">Delete</button></span></div>`).join('') : '<p class="hint">No months logged yet.</p>'}</div>`;
+}
+
+function viewSet() {
+  const s = data.settings;
+  const f = (id, label, v, pctField) => `<label class="lbl">${label}</label><input id="${id}" inputmode="decimal" value="${pctField ? +(v * 100).toFixed(2) : v}">`;
+  return `<div class="card"><div class="lbl">Assumptions</div>
+${f('s_target', 'Annual income target, gross ($, today\'s dollars)', s.target)}
+${f('s_yield', 'Sustainable yield (%)', s.yield, 1)}
+${f('s_growth', 'Nominal growth (%)', s.growth, 1)}
+${f('s_infl', 'Inflation (%)', s.inflation, 1)}
+${f('s_contrib', 'Monthly contribution ($, held flat)', s.contribution)}
+<div class="err" id="err"></div><button class="full" id="ssave">Save assumptions</button></div>
+<div class="card"><div class="lbl">Security</div>
+${vault.slots.pk ? '<p class="hint">Face ID unlock is enabled.</p>' : '<input id="fpw" type="password" placeholder="Passphrase to confirm"><button class="full alt" id="fenable">Enable Face ID</button>'}
+<div class="err" id="serr"></div>
+<button class="full alt" id="exp">Export encrypted backup</button>
+<button class="full alt" id="lock">Lock now</button>
+<button class="full danger" id="wipe">Erase all data on this device</button></div>`;
+}
+
+function render() {
+  if (!data) return viewLogin();
+  $app.innerHTML = `<h1>Retirement Check</h1>${tabs()}${tab === 'home' ? viewHome() : tab === 'log' ? viewLog() : viewSet()}`;
+  $app.querySelectorAll('[data-t]').forEach(b => b.onclick = () => { tab = b.dataset.t; render(); });
+  const $ = id => document.getElementById(id);
+  const num = id => parseFloat(String($(id).value).replace(/[$,\s]/g, ''));
+  if (tab === 'log') {
+    $('save').onclick = async () => {
+      const m = $('m').value, inv = num('inv'), sav = num('sav');
+      if (!/^\d{4}-\d{2}$/.test(m) || !(inv >= 0) || !(sav >= 0)) { $('err').textContent = 'Enter a month and both amounts.'; return; }
+      data.entries = data.entries.filter(e => e.month !== m).concat({ month: m, investments: inv, savings: sav });
+      await persist(); tab = 'home'; render();
+    };
+    $app.querySelectorAll('[data-del]').forEach(b => b.onclick = async () => {
+      data.entries = data.entries.filter(e => e.month !== b.dataset.del); await persist(); render();
+    });
+  }
+  if (tab === 'set') {
+    $('ssave').onclick = async () => {
+      const v = { target: num('s_target'), yield: num('s_yield') / 100, growth: num('s_growth') / 100, inflation: num('s_infl') / 100, contribution: num('s_contrib') };
+      if (!(v.target > 0) || !(v.yield > 0 && v.yield < 1) || !(v.growth > -1 && v.growth < 1) || !(v.inflation > -1 && v.inflation < 1) || !(v.contribution >= 0)) { $('err').textContent = 'Check the values.'; return; }
+      data.settings = v; await persist(); tab = 'home'; render();
+    };
+    const fe = $('fenable');
+    if (fe) fe.onclick = async () => {
+      try { await enableFaceId($('fpw').value); $('fpw').value = ''; render(); } catch (e) { $('serr').textContent = e.name === 'OperationError' ? 'Wrong passphrase.' : (e.message || 'Could not enable Face ID.'); }
+    };
+    $('exp').onclick = () => {
+      const url = URL.createObjectURL(new Blob([localStorage.getItem(KEY)], { type: 'application/json' }));
+      const a = document.createElement('a'); a.href = url; a.download = 'retirement-check-backup.json'; a.click(); setTimeout(() => URL.revokeObjectURL(url), 1000);
+    };
+    $('lock').onclick = () => lock();
+    $('wipe').onclick = () => { if (confirm('Erase all data on this device? Export a backup first.')) { localStorage.removeItem(KEY); dek = null; data = null; vault = null; viewLogin(); } };
+  }
+}
+
+let hiddenAt = 0;
+document.addEventListener('visibilitychange', () => {
+  if (document.hidden) hiddenAt = Date.now();
+  else if (data && hiddenAt && Date.now() - hiddenAt > 60000) lock();
+});
+
+vault = JSON.parse(localStorage.getItem(KEY) || 'null');
+viewLogin();
+</script>
+</body>
+</html>
