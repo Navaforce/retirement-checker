@@ -76,7 +76,7 @@ const unb64 = s => Uint8Array.from(atob(s), c => c.charCodeAt(0));
 const rnd = n => crypto.getRandomValues(new Uint8Array(n));
 const ITER = 600000;
 
-const DEFAULTS = { target: 85000, yield: 0.04, growth: 0.06, inflation: 0.03, contribution: 0 };
+const DEFAULTS = { target: 85000, yield: 0.04, growth: 0.06, inflation: 0.03 };
 
 let dek = null, vault = null, data = null, tab = 'home';
 
@@ -181,15 +181,19 @@ function analysis() {
   if (!es.length) return null;
   const last = es[es.length - 1], bal = total(last);
   const reqToday = s.target / s.yield;
-  const p = project(bal, s.contribution, s.growth, s.inflation, s.yield, s.target);
-  let pace = null;
-  const recent = es.slice(-7);
+  let pace = null, implied = 0;
+  const recent = es.slice(-13);
   if (recent.length >= 2) {
     const a = recent[0], z = recent[recent.length - 1];
     const gap = (+z.month.slice(0, 4) - +a.month.slice(0, 4)) * 12 + (+z.month.slice(5) - +a.month.slice(5));
     if (gap > 0) pace = (total(z) - total(a)) / gap;
   }
-  return { s, es, last, bal, reqToday, p, pace };
+  if (pace !== null && recent.length >= 3) {
+    const avg = recent.reduce((n, e) => n + total(e), 0) / recent.length;
+    implied = Math.max(0, pace - avg * s.growth / 12);
+  }
+  const p = project(bal, implied, s.growth, s.inflation, s.yield, s.target);
+  return { s, es, last, bal, reqToday, p, pace, implied };
 }
 
 function chart(a) {
@@ -300,7 +304,7 @@ function viewHome() {
 <div class="row"><span>Gap today</span><b>${usd(Math.max(0, reqToday - bal))}</b></div>
 <div class="row"><span>Income your balance yields now</span><b>${usd(bal * s.yield)}/yr</b></div>
 ${atRet ? `<div class="row"><span>Target then (inflation-adjusted)</span><b>${usd(atRet.req * s.yield)}/yr</b></div><div class="row"><span>Principal needed then</span><b>${usd(atRet.req)}</b></div>` : ''}
-${a.pace !== null ? `<div class="row"><span>Your recent pace</span><b>${usd(a.pace)}/mo</b></div>` : ''}
+${a.pace !== null ? `<div class="row"><span>Balance change (avg)</span><b>${usd(a.pace)}/mo</b></div><div class="row"><span>Implied new savings</span><b>${a.es.length >= 3 ? usd(a.implied) + '/mo' : 'needs 3 months'}</b></div>` : ''}
 </div><div class="card"><div class="lbl">Trend and projection</div>${chart(a)}</div>`;
 }
 
@@ -324,7 +328,6 @@ ${f('s_target', 'Annual income target, gross ($, today\'s dollars)', s.target)}
 ${f('s_yield', 'Sustainable yield (%)', s.yield, 1)}
 ${f('s_growth', 'Nominal growth (%)', s.growth, 1)}
 ${f('s_infl', 'Inflation (%)', s.inflation, 1)}
-${f('s_contrib', 'Monthly contribution ($, held flat)', s.contribution)}
 <div class="err" id="err"></div><button class="full" id="ssave">Save assumptions</button></div>
 <div class="card"><div class="lbl">Security</div>
 ${vault.slots.pk ? '<p class="hint">Face ID unlock is enabled.</p>' : '<input id="fpw" type="password" placeholder="Passphrase to confirm"><button class="full alt" id="fenable">Enable Face ID</button>'}
@@ -353,8 +356,8 @@ function render() {
   }
   if (tab === 'set') {
     $('ssave').onclick = async () => {
-      const v = { target: num('s_target'), yield: num('s_yield') / 100, growth: num('s_growth') / 100, inflation: num('s_infl') / 100, contribution: num('s_contrib') };
-      if (!(v.target > 0) || !(v.yield > 0 && v.yield < 1) || !(v.growth > -1 && v.growth < 1) || !(v.inflation > -1 && v.inflation < 1) || !(v.contribution >= 0)) { $('err').textContent = 'Check the values.'; return; }
+      const v = { target: num('s_target'), yield: num('s_yield') / 100, growth: num('s_growth') / 100, inflation: num('s_infl') / 100};
+      if (!(v.target > 0) || !(v.yield > 0 && v.yield < 1) || !(v.growth > -1 && v.growth < 1) || !(v.inflation > -1 && v.inflation < 1)) { $('err').textContent = 'Check the values.'; return; }
       data.settings = v; await persist(); tab = 'home'; render();
     };
     const fe = $('fenable');
