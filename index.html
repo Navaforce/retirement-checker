@@ -76,7 +76,7 @@ svg{width:100%;height:auto;display:block}
 <div id="app"></div>
 <script>
 'use strict';
-const VERSION = '1.5.0';
+const VERSION = '1.6.0';
 const KEY = 'rc_vault_v1';
 const enc = new TextEncoder(), dec = new TextDecoder();
 const b64 = u => btoa(String.fromCharCode(...new Uint8Array(u)));
@@ -204,7 +204,7 @@ function analysis() {
     observed = Math.pow(bal / total(a0), 12 / span) - 1;
     pace = (bal - total(a0)) / span;
   }
-  const useObs = observed !== null && es.length >= 6 && span >= 5;
+  const useObs = observed !== null && span >= 12;
   const g = useObs ? observed : s.growth;
   const p = project(bal, 0, g, s.inflation, s.yield, s.target);
   return { s, es, last, bal, reqToday, p, pace, observed, useObs, g };
@@ -320,7 +320,7 @@ function viewHome() {
   const { s, p, bal, reqToday } = a;
   const prog = Math.min(1, bal / reqToday);
   const when = p.months === null ? 'Not within 60 years' : p.months === 0 ? 'Reached' : fmtYM(addMonths(a.last.month, p.months));
-  const yrs = p.months === null ? '' : p.months === 0 ? 'Interest covers your target now' : `${Math.floor(p.months / 12)} yr ${p.months % 12} mo from ${fmtYM(a.last.month)}`;
+  const yrs = p.months === null ? `At ${pct(a.g)}/yr growth the balance does not catch the inflation-adjusted target. Check growth under Settings.` : p.months === 0 ? 'Interest covers your target now' : `${Math.floor(p.months / 12)} yr ${p.months % 12} mo from ${fmtYM(a.last.month)}`;
   const atRet = p.months === null ? null : p.series[p.months];
   return `<div class="card"><div class="lbl">Interest-only retirement</div><div class="big">${when}</div><div class="hint" style="margin:0">${yrs}</div>
 <div class="bar"><i style="width:${(prog * 100).toFixed(1)}%"></i></div>
@@ -331,7 +331,7 @@ function viewHome() {
 <div class="row"><span>Income your balance yields now</span><b>${usd(bal * s.yield)}/yr</b></div>
 ${atRet ? `<div class="row"><span>Target then (inflation-adjusted)</span><b>${usd(atRet.req * s.yield)}/yr</b></div><div class="row"><span>Principal needed then</span><b>${usd(atRet.req)}</b></div>` : ''}
 ${a.observed !== null ? `<div class="row"><span>Your growth (annualized)</span><b>${pct(a.observed)}</b></div><div class="row"><span>Avg balance change</span><b>${usd(a.pace)}/mo</b></div>` : ''}
-<div class="row"><span>Projection uses</span><b>${pct(a.g)}/yr ${a.useObs ? '(yours)' : '(assumed; yours after 6 months)'}</b></div>
+<div class="row"><span>Projection uses</span><b>${pct(a.g)}/yr ${a.useObs ? '(yours)' : '(assumed; yours after 12 months)'}</b></div>
 </div><div class="card"><div class="lbl">Trend and projection</div>${chart(a)}</div>`;
 }
 
@@ -352,7 +352,7 @@ function viewSet() {
   return `<div class="card"><div class="lbl">Assumptions</div>
 ${f('s_target', 'Annual income target, gross ($, today\'s dollars)', s.target)}
 ${f('s_yield', 'Sustainable yield (%)', s.yield, 1)}
-${f('s_growth', 'Assumed growth until 6 months logged (%)', s.growth, 1)}
+${f('s_growth', 'Assumed growth until 12 months logged (%)', s.growth, 1)}
 ${f('s_infl', 'Inflation (%)', s.inflation, 1)}
 <div class="err" id="err"></div><button class="full" id="ssave">Save assumptions</button></div>
 <div class="card"><div class="lbl">Security</div>
