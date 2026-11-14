@@ -15,3 +15,11 @@ Single-file HTML app (index.html). Monthly entry of investments + savings; proje
 
 ## Tests
 Logic + vault round trip verified with happy-dom (docs/test-results). Face ID needs on-device test.
+
+## Features (v1.5.0)
+- Monthly entry of three required balances: E-Trade, Fidelity, Black Diamond (total = sum).
+- Growth default 7.24% (user's lifetime rate, primary account); switches to observed growth after 6 months.
+- Passphrase + Face ID unlock; Face ID enabled from Settings with no re-prompt; passphrase reset in Settings once unlocked.
+- Version label + Refresh button in header (same-origin fetch; CSP connect-src 'self').
+- Icon: tools/make_icon.py generates apple-touch-icon.png, icon-192.png, icon-512.png.
+- Live: https://navaforce.github.io/retirement-checker/ (public repo; no data in repo).
