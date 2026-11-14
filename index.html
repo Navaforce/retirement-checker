@@ -76,7 +76,7 @@ svg{width:100%;height:auto;display:block}
 <div id="app"></div>
 <script>
 'use strict';
-const VERSION = '1.4.0';
+const VERSION = '1.5.0';
 const KEY = 'rc_vault_v1';
 const enc = new TextEncoder(), dec = new TextDecoder();
 const b64 = u => btoa(String.fromCharCode(...new Uint8Array(u)));
@@ -134,6 +134,13 @@ async function prfKey(credId, salt) {
   const out = cred.getClientExtensionResults().prf;
   if (!out || !out.results || !out.results.first) throw new Error('Face ID key derivation not supported on this device');
   return dekKey(out.results.first);
+}
+
+async function changePass(pass) {
+  const salt = rnd(16), kek = await kekFromPass(pass, salt, ITER);
+  vault.kdf = { salt: b64(salt), iter: ITER };
+  vault.slots.pass = await aesEnc(kek, dekRaw);
+  await persist();
 }
 
 async function unlockFaceId() {
@@ -350,6 +357,10 @@ ${f('s_infl', 'Inflation (%)', s.inflation, 1)}
 <div class="err" id="err"></div><button class="full" id="ssave">Save assumptions</button></div>
 <div class="card"><div class="lbl">Security</div>
 ${vault.slots.pk ? '<p class="hint">Face ID unlock is enabled.</p>' : '<button class="full alt" id="fenable">Enable Face ID</button>'}
+<div class="lbl" style="margin-top:10px">Reset passphrase</div>
+<input id="np" type="password" autocomplete="new-password" placeholder="New passphrase (12+ characters)">
+<input id="np2" type="password" autocomplete="new-password" placeholder="Repeat new passphrase">
+<button class="full alt" id="chpw">Reset passphrase</button>
 <div class="err" id="serr"></div>
 <button class="full alt" id="exp">Export encrypted backup</button>
 <button class="full alt" id="lock">Lock now</button>
@@ -387,6 +398,12 @@ function render() {
     $('exp').onclick = () => {
       const url = URL.createObjectURL(new Blob([localStorage.getItem(KEY)], { type: 'application/json' }));
       const a = document.createElement('a'); a.href = url; a.download = 'retirement-check-backup.json'; a.click(); setTimeout(() => URL.revokeObjectURL(url), 1000);
+    };
+    $('chpw').onclick = async () => {
+      const a = $('np').value, b = $('np2').value;
+      if (a.length < 12) { $('serr').textContent = 'Use at least 12 characters.'; return; }
+      if (a !== b) { $('serr').textContent = 'Passphrases do not match.'; return; }
+      await changePass(a); $('np').value = ''; $('np2').value = ''; $('serr').style.color = 'var(--grn)'; $('serr').textContent = 'Passphrase reset.';
     };
     $('lock').onclick = () => lock();
     $('wipe').onclick = () => { if (confirm('Erase all data on this device? Export a backup first.')) { localStorage.removeItem(KEY); dekRaw = null; dek = null; data = null; vault = null; viewLogin(); } };
