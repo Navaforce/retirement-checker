@@ -181,19 +181,17 @@ function analysis() {
   if (!es.length) return null;
   const last = es[es.length - 1], bal = total(last);
   const reqToday = s.target / s.yield;
-  let pace = null, implied = 0;
-  const recent = es.slice(-13);
-  if (recent.length >= 2) {
-    const a = recent[0], z = recent[recent.length - 1];
-    const gap = (+z.month.slice(0, 4) - +a.month.slice(0, 4)) * 12 + (+z.month.slice(5) - +a.month.slice(5));
-    if (gap > 0) pace = (total(z) - total(a)) / gap;
+  const recent = es.slice(-13), a0 = recent[0];
+  const span = (+last.month.slice(0, 4) - +a0.month.slice(0, 4)) * 12 + (+last.month.slice(5) - +a0.month.slice(5));
+  let observed = null, pace = null;
+  if (span > 0 && total(a0) > 0 && bal > 0) {
+    observed = Math.pow(bal / total(a0), 12 / span) - 1;
+    pace = (bal - total(a0)) / span;
   }
-  if (pace !== null && recent.length >= 3) {
-    const avg = recent.reduce((n, e) => n + total(e), 0) / recent.length;
-    implied = Math.max(0, pace - avg * s.growth / 12);
-  }
-  const p = project(bal, implied, s.growth, s.inflation, s.yield, s.target);
-  return { s, es, last, bal, reqToday, p, pace, implied };
+  const useObs = observed !== null && es.length >= 6 && span >= 5;
+  const g = useObs ? observed : s.growth;
+  const p = project(bal, 0, g, s.inflation, s.yield, s.target);
+  return { s, es, last, bal, reqToday, p, pace, observed, useObs, g };
 }
 
 function chart(a) {
@@ -304,7 +302,8 @@ function viewHome() {
 <div class="row"><span>Gap today</span><b>${usd(Math.max(0, reqToday - bal))}</b></div>
 <div class="row"><span>Income your balance yields now</span><b>${usd(bal * s.yield)}/yr</b></div>
 ${atRet ? `<div class="row"><span>Target then (inflation-adjusted)</span><b>${usd(atRet.req * s.yield)}/yr</b></div><div class="row"><span>Principal needed then</span><b>${usd(atRet.req)}</b></div>` : ''}
-${a.pace !== null ? `<div class="row"><span>Balance change (avg)</span><b>${usd(a.pace)}/mo</b></div><div class="row"><span>Implied new savings</span><b>${a.es.length >= 3 ? usd(a.implied) + '/mo' : 'needs 3 months'}</b></div>` : ''}
+${a.observed !== null ? `<div class="row"><span>Your growth (annualized)</span><b>${pct(a.observed)}</b></div><div class="row"><span>Avg balance change</span><b>${usd(a.pace)}/mo</b></div>` : ''}
+<div class="row"><span>Projection uses</span><b>${pct(a.g)}/yr ${a.useObs ? '(yours)' : '(assumed; yours after 6 months)'}</b></div>
 </div><div class="card"><div class="lbl">Trend and projection</div>${chart(a)}</div>`;
 }
 
@@ -313,8 +312,8 @@ function viewLog() {
   const es = sorted().reverse();
   return `<div class="card"><div class="lbl">Log a month</div>
 <input id="m" type="month" value="${ym}">
-<input id="inv" inputmode="decimal" placeholder="Investments total ($)">
-<input id="sav" inputmode="decimal" placeholder="Savings total ($)">
+<input id="inv" inputmode="decimal" placeholder="Investment balance ($)">
+<input id="sav" inputmode="decimal" placeholder="Savings balance ($, optional)">
 <div class="err" id="err"></div>
 <button class="full" id="save">Save month</button></div>
 <div class="card"><div class="lbl">History</div>${es.length ? es.map(e => `<div class="ent"><span>${fmtYM(e.month)}<br><small style="color:#7f9a86">${usd(e.investments)} + ${usd(e.savings)}</small></span><span><b>${usd(total(e))}</b> <button class="alt danger" data-del="${e.month}">Delete</button></span></div>`).join('') : '<p class="hint">No months logged yet.</p>'}</div>`;
@@ -326,7 +325,7 @@ function viewSet() {
   return `<div class="card"><div class="lbl">Assumptions</div>
 ${f('s_target', 'Annual income target, gross ($, today\'s dollars)', s.target)}
 ${f('s_yield', 'Sustainable yield (%)', s.yield, 1)}
-${f('s_growth', 'Nominal growth (%)', s.growth, 1)}
+${f('s_growth', 'Assumed growth until 6 months logged (%)', s.growth, 1)}
 ${f('s_infl', 'Inflation (%)', s.inflation, 1)}
 <div class="err" id="err"></div><button class="full" id="ssave">Save assumptions</button></div>
 <div class="card"><div class="lbl">Security</div>
@@ -345,8 +344,8 @@ function render() {
   const num = id => parseFloat(String($(id).value).replace(/[$,\s]/g, ''));
   if (tab === 'log') {
     $('save').onclick = async () => {
-      const m = $('m').value, inv = num('inv'), sav = num('sav');
-      if (!/^\d{4}-\d{2}$/.test(m) || !(inv >= 0) || !(sav >= 0)) { $('err').textContent = 'Enter a month and both amounts.'; return; }
+      const m = $('m').value, inv = num('inv'), sav = $('sav').value.trim() === '' ? 0 : num('sav');
+      if (!/^\d{4}-\d{2}$/.test(m) || !(inv >= 0) || !(sav >= 0)) { $('err').textContent = 'Enter a month and your investment balance.'; return; }
       data.entries = data.entries.filter(e => e.month !== m).concat({ month: m, investments: inv, savings: sav });
       await persist(); tab = 'home'; render();
     };
