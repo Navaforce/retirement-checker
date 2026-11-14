@@ -9,7 +9,7 @@ d.getElementById('pw').value='correct horse battery';d.getElementById('pw2').val
 d.getElementById('go').click();await sleep(2500);
 console.log('home?',d.querySelector('.big')?.textContent||d.body.textContent.slice(0,80));
 d.querySelector('[data-t=log]').click();
-const add=async(m,i,s)=>{d.getElementById('m').value=m;d.getElementById('inv').value=i;d.getElementById('sav').value=s;d.getElementById('save').click();await sleep(100);d.querySelector('[data-t=log]').click();};
+const add=async(m,i,s)=>{d.getElementById('m').value=m;d.getElementById('a_etrade').value=i*0.15;d.getElementById('a_fidelity').value=i*0.3;d.getElementById('a_blackdiamond').value=i*0.55+(+s);d.getElementById('save').click();await sleep(100);d.querySelector('[data-t=log]').click();};
 await add('2026-09','900000','100000');await add('2026-10','930000','105000');await add('2026-11','960000','110000');
 d.querySelector('[data-t=home]').click();
 console.log(d.querySelector('.big').textContent);
