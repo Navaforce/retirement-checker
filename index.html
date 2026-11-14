@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <meta name="robots" content="noindex,nofollow">
 <meta name="referrer" content="no-referrer">
-<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src 'self' data:; connect-src 'none'; form-action 'none'; base-uri 'none'">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src 'self' data:; connect-src 'self'; form-action 'none'; base-uri 'none'">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="theme-color" content="#070b08">
 <meta name="apple-mobile-web-app-title" content="Ret Check">
@@ -30,6 +30,9 @@ body::before{content:"";position:fixed;left:0;right:0;height:120px;top:-120px;po
 .banner.red{background:#3a1410;color:var(--red)}
 .hdr{display:flex;justify-content:space-between;align-items:center;margin-bottom:12px}
 h1{font-size:16px;margin:0;letter-spacing:.2em;text-transform:uppercase;color:var(--grn)}
+.vr{display:flex;flex-direction:column;align-items:flex-end;gap:4px}
+.vr .v{font-size:11px;color:var(--dim);letter-spacing:.1em}
+.vr button{padding:4px 10px;font-size:10px;border-radius:999px}
 .stat{font-size:11px;color:var(--grn);letter-spacing:.15em}
 .stat i{display:inline-block;width:8px;height:8px;border-radius:50%;background:var(--grn);margin-right:6px;box-shadow:0 0 8px var(--grn);animation:pulse 2s infinite}
 .card{position:relative;background:var(--panel);border:1px solid var(--line);border-radius:2px;padding:14px;margin-bottom:12px;animation:rise .35s ease both}
@@ -73,6 +76,7 @@ svg{width:100%;height:auto;display:block}
 <div id="app"></div>
 <script>
 'use strict';
+const VERSION = '1.2.0';
 const KEY = 'rc_vault_v1';
 const enc = new TextEncoder(), dec = new TextDecoder();
 const b64 = u => btoa(String.fromCharCode(...new Uint8Array(u)));
@@ -224,12 +228,24 @@ ${dot}${ticks}</svg>
 }
 
 const $app = document.getElementById('app');
+const verBox = () => `<span class="v">v${VERSION}</span><button type="button" class="alt" data-refresh aria-label="Refresh to the latest version">&#8635; Refresh</button>`;
+async function pullLatest(b) {
+  b.disabled = true; b.textContent = 'Checking...';
+  let msg = 'Reloading...';
+  try {
+    const r = await fetch(location.pathname + '?v=' + Date.now(), { cache: 'reload' }), txt = await r.text(), m = txt.match(/const VERSION = '([^']+)'/);
+    if (m) msg = m[1] === VERSION ? 'Up to date' : 'Updating to v' + m[1];
+  } catch (e) { msg = 'Offline: reloading'; }
+  b.textContent = msg;
+  setTimeout(() => location.replace(location.pathname + '?r=' + Date.now()), 700);
+}
+document.addEventListener('click', e => { const b = e.target.closest('[data-refresh]'); if (b) pullLatest(b); });
 const esc = s => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 
 function viewLogin(err) {
   const exists = !!vault;
   $app.innerHTML = `<div class="banner ${err && /denied|wrong|valid|match|least|not/i.test(err) ? 'red' : ''}">${err && /denied|wrong/i.test(err) ? 'ACCESS DENIED' : 'RESTRICTED // AUTHORIZED PERSONNEL ONLY'}</div>
-<div class="hdr"><h1>Retirement Check</h1><span class="stat"><i></i>LOCKED</span></div>
+<div class="hdr"><h1>Retirement Check</h1><span class="vr"><span class="stat"><i></i>LOCKED</span>${verBox()}</span></div>
 <div class="card" id="gate"><div class="radar" id="radar"></div>
 <div class="seq" id="seq" hidden></div>
 <div class="lbl">${exists ? 'Credential required' : 'Establish passphrase'}</div>
@@ -342,7 +358,7 @@ ${vault.slots.pk ? '<p class="hint">Face ID unlock is enabled.</p>' : '<input id
 
 function render() {
   if (!data) return viewLogin();
-  $app.innerHTML = `<div class="banner">SECURE // ENCRYPTED SESSION</div><div class="hdr"><h1>Retirement Check</h1><span class="stat"><i></i>SECURE</span></div>${tabs()}${tab === 'home' ? viewHome() : tab === 'log' ? viewLog() : viewSet()}`;
+  $app.innerHTML = `<div class="banner">SECURE // ENCRYPTED SESSION</div><div class="hdr"><h1>Retirement Check</h1><span class="vr"><span class="stat"><i></i>SECURE</span>${verBox()}</span></div>${tabs()}${tab === 'home' ? viewHome() : tab === 'log' ? viewLog() : viewSet()}`;
   $app.querySelectorAll('[data-t]').forEach(b => b.onclick = () => { tab = b.dataset.t; render(); });
   const $ = id => document.getElementById(id);
   const num = id => parseFloat(String($(id).value).replace(/[$,\s]/g, ''));

@@ -10,7 +10,7 @@ Single-file HTML app (index.html). Monthly entry of investments + savings; proje
 ## Security
 - No financial data in repo or HTML; data lives in browser localStorage only.
 - AES-GCM data key, wrapped by PBKDF2 (600k) passphrase key and optionally a WebAuthn passkey PRF key (Face ID, iOS 18+, HTTPS).
-- CSP: connect-src none (no network). Auto-lock after 60s hidden. Encrypted export/import for backup.
+- CSP: connect-src self (same-origin only; used by version refresh). Auto-lock after 60s hidden. Encrypted export/import for backup.
 - GitHub Pages is public even for private repos (paid plans excepted); security rests on encryption, not hosting.
 
 ## Tests
