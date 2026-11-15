@@ -2,10 +2,13 @@
 
 Single-file HTML app (index.html). Monthly entry of investments + savings; projects the month interest-only income ($85k gross, inflation-adjusted) covers the target without touching principal.
 
-## Model
-- Required principal(t) = target x (1+inflation)^(t/12) / yield. Defaults: yield 4%, growth 7.24%, inflation 3%, no contribution input (user enters balances only). Projection compounds the balance at the assumed growth until 12 months are logged, then at the user's own observed annualized growth (trailing 12 months).
+## Model (v1.7.0)
+- Per-account growth and income yield (Settings). Defaults: E-Trade CRM 7% / 0.6% (verify dividend), Fidelity 401k 7% / 4% (locked until 2036-02), Black Diamond 7.24% / 4%.
+- Income(t) = sum(balance_i(t) x yield_i), counting locked accounts only after the unlock month. Target(t) = $85k gross x (1+3% inflation)^(t/12). Date = first month income >= target (60-year cap).
+- Early/late = growth +/- 2 points on all accounts. Also shows the date if locked accounts were accessible, and after-tax target (15% default).
+- Observed growth per account replaces the assumption after 12 months: median monthly return over the trailing 12 months, annualized, so one-off deposits (RSU vests) don't distort it.
+- No contribution input (balances only).
 - $85k comes from the portfolio alone; pension, VA and Social Security are excluded by design.
-- Timeline = first month projected balance >= required principal (60-year cap).
 
 ## Security
 - No financial data in repo or HTML; data lives in browser localStorage only.
@@ -16,9 +19,8 @@ Single-file HTML app (index.html). Monthly entry of investments + savings; proje
 ## Tests
 Logic + vault round trip verified with happy-dom (docs/test-results). Face ID needs on-device test.
 
-## Features (v1.5.0)
+## Features
 - Monthly entry of three required balances: E-Trade, Fidelity, Black Diamond (total = sum).
-- Growth default 7.24% (user's lifetime rate, primary account); switches to observed growth after 12 months.
 - Passphrase + Face ID unlock; Face ID enabled from Settings with no re-prompt; passphrase reset in Settings once unlocked.
 - Version label + Refresh button in header (same-origin fetch; CSP connect-src 'self').
 - Icon: tools/make_icon.py generates apple-touch-icon.png, icon-192.png, icon-512.png.

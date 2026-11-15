@@ -76,7 +76,7 @@ svg{width:100%;height:auto;display:block}
 <div id="app"></div>
 <script>
 'use strict';
-const VERSION = '1.6.0';
+const VERSION = '1.7.0';
 const KEY = 'rc_vault_v1';
 const enc = new TextEncoder(), dec = new TextDecoder();
 const b64 = u => btoa(String.fromCharCode(...new Uint8Array(u)));
@@ -84,7 +84,14 @@ const unb64 = s => Uint8Array.from(atob(s), c => c.charCodeAt(0));
 const rnd = n => crypto.getRandomValues(new Uint8Array(n));
 const ITER = 600000;
 
-const DEFAULTS = { target: 85000, yield: 0.04, growth: 0.0724, inflation: 0.03 };
+const DEFAULTS = { target: 85000, inflation: 0.03, tax: 0.15, range: 0.02, unlock: '2036-02',
+  accts: { etrade: { growth: 0.07, yield: 0.006 }, fidelity: { growth: 0.07, yield: 0.04, locked: true }, blackdiamond: { growth: 0.0724, yield: 0.04 } } };
+function normalize() {
+  const s = data.settings, d = JSON.parse(JSON.stringify(DEFAULTS));
+  for (const k of ['target', 'inflation', 'tax', 'range', 'unlock']) if (s[k] === undefined) s[k] = d[k];
+  s.accts = s.accts || {};
+  for (const k in d.accts) s.accts[k] = { ...d.accts[k], ...(s.accts[k] || {}) };
+}
 
 let dekRaw = null, dek = null, vault = null, data = null, tab = 'home';
 
@@ -166,14 +173,21 @@ async function enableFaceId() {
   await persist();
 }
 
-function project(bal, c, g, infl, y, target, maxMonths = 720) {
-  const r = g / 12, series = [];
-  let b = bal;
-  for (let t = 0; t <= maxMonths; t++) {
-    const req = target * Math.pow(1 + infl, t / 12) / y;
-    series.push({ t, bal: b, req });
-    if (b >= req) return { months: t, series };
-    b = b * (1 + r) + c;
+function monthsBetween(a, b) { return (+b.slice(0, 4) - +a.slice(0, 4)) * 12 + (+b.slice(5) - +a.slice(5)); }
+
+function project(bals, rates, shift, s, respectLock, startYM) {
+  const lockT = Math.max(0, monthsBetween(startYM, s.unlock)), series = [];
+  const b = { ...bals };
+  for (let t = 0; t <= 720; t++) {
+    let income = 0, bal = 0;
+    for (const k in b) {
+      bal += b[k];
+      if (!(respectLock && s.accts[k].locked && t < lockT)) income += b[k] * s.accts[k].yield;
+    }
+    const target = s.target * Math.pow(1 + s.inflation, t / 12);
+    series.push({ t, income, target, bal });
+    if (income >= target) return { months: t, series };
+    for (const k in b) b[k] *= 1 + (rates[k] + shift) / 12;
   }
   return { months: null, series };
 }
@@ -192,47 +206,73 @@ const ACCTS = [['etrade', 'E-Trade'], ['fidelity', 'Fidelity'], ['blackdiamond',
 const total = e => e.accounts ? ACCTS.reduce((n, [k]) => n + (e.accounts[k] || 0), 0) : (e.investments || 0) + (e.savings || 0);
 const breakdown = e => e.accounts ? ACCTS.map(([k, l]) => l + ' ' + usd(e.accounts[k] || 0)).join(' · ') : usd(e.investments) + ' + ' + usd(e.savings);
 
+function acctBals(e) {
+  if (e.accounts) return Object.fromEntries(ACCTS.map(([k]) => [k, e.accounts[k] || 0]));
+  return { etrade: 0, fidelity: 0, blackdiamond: total(e) };
+}
+
+function observedGrowth(k, es) {
+  const w = es.filter(e => e.accounts).slice(-13);
+  if (w.length < 2 || monthsBetween(w[0].month, w[w.length - 1].month) < 12) return null;
+  const r = [];
+  for (let i = 1; i < w.length; i++) {
+    const a = w[i - 1].accounts[k] || 0, b = w[i].accounts[k] || 0;
+    if (monthsBetween(w[i - 1].month, w[i].month) === 1 && a > 0 && b > 0) r.push(b / a - 1);
+  }
+  if (r.length < 6) return null;
+  r.sort((x, y) => x - y);
+  const m = r.length % 2 ? r[(r.length - 1) / 2] : (r[r.length / 2 - 1] + r[r.length / 2]) / 2;
+  return Math.max(-0.2, Math.min(0.3, Math.pow(1 + m, 12) - 1));
+}
+
 function analysis() {
   const s = data.settings, es = sorted();
   if (!es.length) return null;
-  const last = es[es.length - 1], bal = total(last);
-  const reqToday = s.target / s.yield;
-  const recent = es.slice(-13), a0 = recent[0];
-  const span = (+last.month.slice(0, 4) - +a0.month.slice(0, 4)) * 12 + (+last.month.slice(5) - +a0.month.slice(5));
-  let observed = null, pace = null;
-  if (span > 0 && total(a0) > 0 && bal > 0) {
-    observed = Math.pow(bal / total(a0), 12 / span) - 1;
-    pace = (bal - total(a0)) / span;
+  const last = es[es.length - 1], bals = acctBals(last), bal = total(last), start = last.month;
+  const lockT = Math.max(0, monthsBetween(start, s.unlock));
+  const rates = {}, info = [];
+  let incAcc = 0, incAll = 0;
+  for (const [k, l] of ACCTS) {
+    const obs = observedGrowth(k, es), c = s.accts[k];
+    rates[k] = obs !== null ? obs : c.growth;
+    const inc = bals[k] * c.yield;
+    incAll += inc; if (!(c.locked && lockT > 0)) incAcc += inc;
+    info.push({ k, l, bal: bals[k], growth: rates[k], obs: obs !== null, yield: c.yield, inc, locked: !!c.locked });
   }
-  const useObs = observed !== null && span >= 12;
-  const g = useObs ? observed : s.growth;
-  const p = project(bal, 0, g, s.inflation, s.yield, s.target);
-  return { s, es, last, bal, reqToday, p, pace, observed, useObs, g };
+  const p = project(bals, rates, 0, s, true, start);
+  const early = project(bals, rates, s.range, s, true, start), late = project(bals, rates, -s.range, s, true, start);
+  const all = project(bals, rates, 0, s, false, start);
+  const blended = bal > 0 ? incAll / bal : 0;
+  const hist = es.map(e => { const b = acctBals(e); return { month: e.month, v: ACCTS.reduce((n, [k]) => n + b[k] * s.accts[k].yield, 0) }; });
+  return { s, es, last, bal, p, early, late, all, info, incAcc, incAll, blended, reqToday: blended > 0 ? s.target / blended : null, hist, start };
 }
 
 function chart(a) {
   const W = 400, H = 200, pl = 8, pr = 8, pt = 10, pb = 22;
-  const startYM = a.last.month;
-  const horizon = a.p.months === null ? 360 : Math.max(a.p.months + 12, 24);
-  const ser = a.p.series.slice(0, horizon + 1);
-  const hist = a.es.map(e => ({ t: (+e.month.slice(0, 4) - +startYM.slice(0, 4)) * 12 + (+e.month.slice(5) - +startYM.slice(5)), v: total(e) }));
+  const mo = [a.p, a.early, a.late, a.all].map(r => r.months).filter(m => m !== null);
+  const horizon = Math.min(360, Math.max(24, (a.p.months === null ? (mo.length ? Math.max(...mo) : 240) : Math.max(...mo)) + 12));
+  const cut = r => r.series.slice(0, horizon + 1);
+  const hist = a.hist.map(h => ({ t: monthsBetween(a.start, h.month), v: h.v }));
   const tMin = Math.min(0, ...hist.map(h => h.t)), tMax = horizon;
-  const vMax = Math.max(...ser.map(p => Math.max(p.bal, p.req)), ...hist.map(h => h.v)) * 1.05;
+  const vMax = Math.max(...cut(a.p).map(p => Math.max(p.income, p.target)), ...cut(a.early).map(p => p.income), ...hist.map(h => h.v)) * 1.05;
   const x = t => pl + (t - tMin) / (tMax - tMin) * (W - pl - pr);
   const y = v => pt + (1 - v / vMax) * (H - pt - pb);
   const line = (pts, f) => pts.map((p, i) => (i ? 'L' : 'M') + x(p.t).toFixed(1) + ' ' + y(f(p)).toFixed(1)).join('');
   const ticks = [0, .25, .5, .75, 1].map(f => {
     const t = Math.round(tMin + f * (tMax - tMin));
-    return `<text x="${x(t).toFixed(1)}" y="${H - 6}" fill="#7f9a86" font-size="10" text-anchor="middle">${addMonths(startYM, t).slice(0, 4)}</text>`;
+    return `<text x="${x(t).toFixed(1)}" y="${H - 6}" fill="#7f9a86" font-size="10" text-anchor="middle">${addMonths(a.start, t).slice(0, 4)}</text>`;
   }).join('');
-  const dot = a.p.months !== null ? `<circle cx="${x(a.p.months).toFixed(1)}" cy="${y(ser[ser.length > a.p.months ? a.p.months : ser.length - 1].bal).toFixed(1)}" r="5" fill="#1f8f5a" stroke="#070b08"/>` : '';
-  return `<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="Balance versus required principal">
-<path d="${line(ser, p => p.req)}" fill="none" stroke="#ffb020" stroke-width="2"/>
-<path d="${line(ser, p => p.bal)}" fill="none" stroke="#39ff88" stroke-width="2" stroke-dasharray="5 4"/>
+  const m = a.p.months;
+  const dot = m !== null && m <= horizon ? `<circle cx="${x(m).toFixed(1)}" cy="${y(a.p.series[m].income).toFixed(1)}" r="5" fill="#1f8f5a" stroke="#070b08"/>` : '';
+  return `<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="Portfolio income versus target">
+<path d="${line(cut(a.p), p => p.target)}" fill="none" stroke="#ffb020" stroke-width="2"/>
+<path d="${line(cut(a.early), p => p.income)}" fill="none" stroke="#39ff88" stroke-width="1" opacity=".5"/>
+<path d="${line(cut(a.late), p => p.income)}" fill="none" stroke="#39ff88" stroke-width="1" opacity=".5"/>
+<path d="${line(cut(a.p), p => p.income)}" fill="none" stroke="#39ff88" stroke-width="2" stroke-dasharray="5 4"/>
 ${hist.length > 1 ? `<path d="${line(hist, p => p.v)}" fill="none" stroke="#fff" stroke-width="2.5"/>` : ''}
 ${hist.map(h => `<circle cx="${x(h.t).toFixed(1)}" cy="${y(h.v).toFixed(1)}" r="3" fill="#fff"/>`).join('')}
 ${dot}${ticks}</svg>
-<div class="leg"><span><b style="background:#fff"></b>Actual</span><span><b style="background:#39ff88"></b>Projected</span><span><b style="background:#ffb020"></b>Required principal</span></div>`;
+<div class="leg"><span><b style="background:#fff"></b>Actual income</span><span><b style="background:#39ff88"></b>Projected (band = range)</span><span><b style="background:#ffb020"></b>Target</span></div>`;
 }
 
 const $app = document.getElementById('app');
@@ -314,25 +354,31 @@ function tabs() {
   return `<div class="tabs">${[['home', 'Status'], ['log', 'Monthly'], ['set', 'Settings']].map(([k, l]) => `<button data-t="${k}" class="${tab === k ? 'on' : ''}">${l}</button>`).join('')}</div>`;
 }
 
+const whenOf = (r, start) => r.months === null ? 'Not within 60 years' : r.months === 0 ? 'Now' : fmtYM(addMonths(start, r.months));
+
 function viewHome() {
   const a = analysis();
   if (!a) return `<div class="card"><div class="lbl">Get started</div><p>Log your first month to see your timeline.</p><button class="full" data-t="log">Log this month</button></div>`;
-  const { s, p, bal, reqToday } = a;
-  const prog = Math.min(1, bal / reqToday);
-  const when = p.months === null ? 'Not within 60 years' : p.months === 0 ? 'Reached' : fmtYM(addMonths(a.last.month, p.months));
-  const yrs = p.months === null ? `At ${pct(a.g)}/yr growth the balance does not catch the inflation-adjusted target. Check growth under Settings.` : p.months === 0 ? 'Interest covers your target now' : `${Math.floor(p.months / 12)} yr ${p.months % 12} mo from ${fmtYM(a.last.month)}`;
+  const { s, p, bal } = a;
+  const prog = Math.min(1, a.incAcc / s.target);
+  const yrs = p.months === null ? 'Growth never catches the inflation-adjusted target at these assumptions. Check Settings.' : p.months === 0 ? 'Interest covers your target now' : `${Math.floor(p.months / 12)} yr ${p.months % 12} mo from ${fmtYM(a.start)}`;
   const atRet = p.months === null ? null : p.series[p.months];
-  return `<div class="card"><div class="lbl">Interest-only retirement</div><div class="big">${when}</div><div class="hint" style="margin:0">${yrs}</div>
+  const lockNote = a.info.some(i => i.locked) && a.all.months !== p.months ? `<div class="row"><span>If ${a.info.filter(i => i.locked).map(i => i.l).join(', ')} were accessible</span><b>${whenOf(a.all, a.start)}</b></div><div class="row"><span>Locked until</span><b>${fmtYM(s.unlock)}</b></div>` : '';
+  return `<div class="card"><div class="lbl">Interest-only retirement (expected)</div><div class="big">${whenOf(p, a.start)}</div><div class="hint" style="margin:0">${yrs}</div>
+<div class="row"><span>Early (+${(s.range * 100).toFixed(0)} pts growth)</span><b>${whenOf(a.early, a.start)}</b></div>
+<div class="row"><span>Late (-${(s.range * 100).toFixed(0)} pts growth)</span><b>${whenOf(a.late, a.start)}</b></div>
+${lockNote}
 <div class="bar"><i style="width:${(prog * 100).toFixed(1)}%"></i></div>
-<div class="row"><span>Progress</span><b>${pct(prog)}</b></div>
+<div class="row"><span>Progress (accessible income / target)</span><b>${pct(prog)}</b></div>
 <div class="row"><span>Current total</span><b>${usd(bal)}</b></div>
-<div class="row"><span>Principal needed today</span><b>${usd(reqToday)}</b></div>
-<div class="row"><span>Gap today</span><b>${usd(Math.max(0, reqToday - bal))}</b></div>
-<div class="row"><span>Income your balance yields now</span><b>${usd(bal * s.yield)}/yr</b></div>
-${atRet ? `<div class="row"><span>Target then (inflation-adjusted)</span><b>${usd(atRet.req * s.yield)}/yr</b></div><div class="row"><span>Principal needed then</span><b>${usd(atRet.req)}</b></div>` : ''}
-${a.observed !== null ? `<div class="row"><span>Your growth (annualized)</span><b>${pct(a.observed)}</b></div><div class="row"><span>Avg balance change</span><b>${usd(a.pace)}/mo</b></div>` : ''}
-<div class="row"><span>Projection uses</span><b>${pct(a.g)}/yr ${a.useObs ? '(yours)' : '(assumed; yours after 12 months)'}</b></div>
-</div><div class="card"><div class="lbl">Trend and projection</div>${chart(a)}</div>`;
+<div class="row"><span>Income now, accessible</span><b>${usd(a.incAcc)}/yr</b></div>
+<div class="row"><span>Income now, all accounts</span><b>${usd(a.incAll)}/yr</b></div>
+<div class="row"><span>Blended yield</span><b>${pct(a.blended)}</b></div>
+${a.reqToday ? `<div class="row"><span>Principal needed today</span><b>${usd(a.reqToday)}</b></div>` : ''}
+<div class="row"><span>Target, after ${pct(s.tax)} tax</span><b>${usd(s.target * (1 - s.tax))}/yr</b></div>
+${atRet ? `<div class="row"><span>Target then (inflation-adjusted)</span><b>${usd(atRet.target)}/yr</b></div>` : ''}
+</div><div class="card"><div class="lbl">Accounts</div>${a.info.map(i => `<div class="row"><span>${i.l}${i.locked ? ' (locked)' : ''}<br><small>${pct(i.growth)} growth ${i.obs ? '(yours)' : '(assumed)'} · ${pct(i.yield)} yield</small></span><span style="text-align:right"><b>${usd(i.bal)}</b><br><small>${usd(i.inc)}/yr</small></span></div>`).join('')}</div>
+<div class="card"><div class="lbl">Income vs target</div>${chart(a)}</div>`;
 }
 
 function viewLog() {
@@ -351,9 +397,12 @@ function viewSet() {
   const f = (id, label, v, pctField) => `<label class="lbl">${label}</label><input id="${id}" inputmode="decimal" value="${pctField ? +(v * 100).toFixed(2) : v}">`;
   return `<div class="card"><div class="lbl">Assumptions</div>
 ${f('s_target', 'Annual income target, gross ($, today\'s dollars)', s.target)}
-${f('s_yield', 'Sustainable yield (%)', s.yield, 1)}
-${f('s_growth', 'Assumed growth until 12 months logged (%)', s.growth, 1)}
 ${f('s_infl', 'Inflation (%)', s.inflation, 1)}
+${f('s_tax', 'Effective tax rate on draws (%)', s.tax, 1)}
+${f('s_range', 'Early/late range (growth points, +/-)', s.range, 1)}
+<label class="lbl">Locked accounts unlock (month)</label><input id="s_unlock" type="month" value="${s.unlock}">
+${ACCTS.map(([k, l]) => `<div class="lbl" style="margin-top:6px">${l}</div>${f('g_' + k, 'Assumed growth until 12 months logged (%)', s.accts[k].growth, 1)}${f('y_' + k, 'Income yield (%)', s.accts[k].yield, 1)}`).join('')}
+<div class="hint">Yields are what each account actually pays in interest and dividends. Verify E-Trade (CRM) against its current dividend.</div>
 <div class="err" id="err"></div><button class="full" id="ssave">Save assumptions</button></div>
 <div class="card"><div class="lbl">Security</div>
 ${vault.slots.pk ? '<p class="hint">Face ID unlock is enabled.</p>' : '<button class="full alt" id="fenable">Enable Face ID</button>'}
@@ -369,6 +418,7 @@ ${vault.slots.pk ? '<p class="hint">Face ID unlock is enabled.</p>' : '<button c
 
 function render() {
   if (!data) return viewLogin();
+  normalize();
   $app.innerHTML = `<div class="banner">SECURE // ENCRYPTED SESSION</div><div class="hdr"><h1>Retirement Check</h1><span class="vr"><span class="stat"><i></i>SECURE</span>${verBox()}</span></div>${tabs()}${tab === 'home' ? viewHome() : tab === 'log' ? viewLog() : viewSet()}`;
   $app.querySelectorAll('[data-t]').forEach(b => b.onclick = () => { tab = b.dataset.t; render(); });
   const $ = id => document.getElementById(id);
@@ -387,8 +437,10 @@ function render() {
   }
   if (tab === 'set') {
     $('ssave').onclick = async () => {
-      const v = { target: num('s_target'), yield: num('s_yield') / 100, growth: num('s_growth') / 100, inflation: num('s_infl') / 100};
-      if (!(v.target > 0) || !(v.yield > 0 && v.yield < 1) || !(v.growth > -1 && v.growth < 1) || !(v.inflation > -1 && v.inflation < 1)) { $('err').textContent = 'Check the values.'; return; }
+      const v = { target: num('s_target'), inflation: num('s_infl') / 100, tax: num('s_tax') / 100, range: num('s_range') / 100, unlock: $('s_unlock').value, accts: {} };
+      for (const [k] of ACCTS) v.accts[k] = { growth: num('g_' + k) / 100, yield: num('y_' + k) / 100, locked: !!data.settings.accts[k].locked };
+      const okp = x => x > -1 && x < 1;
+      if (!(v.target > 0) || !okp(v.inflation) || !(v.tax >= 0 && v.tax < 1) || !(v.range >= 0 && v.range < 1) || !/^\d{4}-\d{2}$/.test(v.unlock) || ACCTS.some(([k]) => !okp(v.accts[k].growth) || !(v.accts[k].yield > 0 && v.accts[k].yield < 1))) { $('err').textContent = 'Check the values.'; return; }
       data.settings = v; await persist(); tab = 'home'; render();
     };
     const fe = $('fenable');
