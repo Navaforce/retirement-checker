@@ -76,7 +76,7 @@ svg{width:100%;height:auto;display:block}
 <div id="app"></div>
 <script>
 'use strict';
-const VERSION = '1.7.0';
+const VERSION = '1.7.1';
 const KEY = 'rc_vault_v1';
 const enc = new TextEncoder(), dec = new TextDecoder();
 const b64 = u => btoa(String.fromCharCode(...new Uint8Array(u)));
@@ -85,12 +85,13 @@ const rnd = n => crypto.getRandomValues(new Uint8Array(n));
 const ITER = 600000;
 
 const DEFAULTS = { target: 85000, inflation: 0.03, tax: 0.15, range: 0.02, unlock: '2036-02',
-  accts: { etrade: { growth: 0.07, yield: 0.006 }, fidelity: { growth: 0.07, yield: 0.04, locked: true }, blackdiamond: { growth: 0.0724, yield: 0.04 } } };
+  accts: { etrade: { growth: 0.07, yield: 0.006 }, fidelity: { growth: 0.07, yield: 0.04, locked: true }, blackdiamond: { growth: 0.07, yield: 0.04 } } };
 function normalize() {
   const s = data.settings, d = JSON.parse(JSON.stringify(DEFAULTS));
   for (const k of ['target', 'inflation', 'tax', 'range', 'unlock']) if (s[k] === undefined) s[k] = d[k];
   s.accts = s.accts || {};
   for (const k in d.accts) s.accts[k] = { ...d.accts[k], ...(s.accts[k] || {}) };
+  if (!s.ver) { s.accts.fidelity.growth = 0.07; s.accts.blackdiamond.growth = 0.07; s.ver = 1; }
 }
 
 let dekRaw = null, dek = null, vault = null, data = null, tab = 'home';
